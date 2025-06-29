@@ -1,16 +1,19 @@
 FROM python:3.10-slim
 
-# Install ffmpeg and system tools
+# Install ffmpeg and update system
 RUN apt-get update && apt-get install -y ffmpeg
 
 # Set working directory
 WORKDIR /app
 
-# Copy code and install Python dependencies
+# Copy source code
 COPY . .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies
+RUN pip install --no-cache-dir fastapi uvicorn pydub openai requests python-multipart
 
+# Expose port for Railway
 EXPOSE 8000
 
+# Start the FastAPI app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
