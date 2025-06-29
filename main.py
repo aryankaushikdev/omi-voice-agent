@@ -5,57 +5,77 @@ import tempfile
 import openai
 import requests
 from io import BytesIO
+import os
 
 app = FastAPI()
 
-# Replace these with your actual API keys
-ELEVEN_API_KEY = "your_elevenlabs_api_key"
-OPENAI_API_KEY = "your_openai_api_key"
+# ✅ Make sure these are set in Railway Variables
+ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
+
+@app.get("/")
+def health():
+    return {"status": "ok"}
 
 @app.post("/audio")
 async def receive_audio(request: Request):
-    sample_rate = request.query_params.get("sample_rate", 16000)
-    uid = request.query_params.get("uid", "unknown")
+    try:
+        sample_rate = int(request.query_params.get("sample_rate", 16000))
+        uid = request.query_params.get("uid", "unknown")
 
-    audio_bytes = await request.body()
+        print(f"🔊 Received audio from UID: {uid} at {sample_rate}Hz")
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-        audio = AudioSegment(
-            data=audio_bytes,
-            sample_width=2,
-            frame_rate=int(sample_rate),
-            channels=1
-        )
-        audio.export(temp_audio.name, format="wav")
+        audio_bytes = await request.body()
 
-        # Transcribe with Whisper
-        audio_file = open(temp_audio.name, "rb")
-        transcript = openai.Audio.transcribe("whisper-1", audio_file)["text"]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+            audio = AudioSegment(
+                data=audio_bytes,
+                sample_width=2,
+                frame_rate=sample_rate,
+                channels=1
+            )
+            audio.export(temp_audio.name, format="wav")
+            print(f"🎧 Saved audio to: {temp_audio.name}")
 
-    print(f"User ({uid}) said: {transcript}")
+            audio_file = open(temp_audio.name, "rb")
+            transcript = openai.Audio.transcribe("whisper-1", audio_file)["text"]
+            print(f"📝 Transcript: {transcript}")
 
-    # Query the RAG agent (static context for Gravesend)
-    response_text = query_rag(transcript)
+        # Context-aware Gravesend response
+        response_text = query_rag(transcript)
+        print(f"🤖 RAG Response: {response_text}")
 
-    # Convert response to speech using ElevenLabs
-    audio_response = eleven_labs_tts(response_text)
+        # ElevenLabs TTS response
+        audio_response = eleven_labs_tts(response_text)
+        print(f"🔁 Returning audio response")
 
-    return StreamingResponse(BytesIO(audio_response), media_type="audio/mpeg")
+        return StreamingResponse(BytesIO(audio_response), media_type="audio/mpeg")
+
+    except Exception as e:
+        print("❌ ERROR in /audio:", str(e))
+        return {"error": str(e)}
 
 def query_rag(text):
-    return f"In Gravesend’s alluvial soil, the best approach would be: {text.lower()} with legumes like beans."
+    # Static Gravesend context — you can replace this with a LangChain call later
+    return f"In Gravesend’s fertile alluvial soil, the best course of action is: {text.lower()} — consider legumes like beans or peas for nitrogen recovery."
 
 def eleven_labs_tts(text):
+    voice_id = "Rachel"  # You can change to any ElevenLabs voice ID
     response = requests.post(
-        "https://api.elevenlabs.io/v1/text-to-speech/Rachel",
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
         headers={
             "xi-api-key": ELEVEN_API_KEY,
             "Content-Type": "application/json"
         },
         json={
             "text": text,
-            "voice_settings": {"stability": 0.7, "similarity_boost": 0.8}
+            "voice_settings": {
+                "stability": 0.7,
+                "similarity_boost": 0.8
+            }
         }
     )
+    if response.status_code != 200:
+        raise Exception(f"TTS failed: {response.text}")
     return response.content
