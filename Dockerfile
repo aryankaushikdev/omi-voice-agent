@@ -1,13 +1,15 @@
 FROM python:3.10-slim
 
+# Install ffmpeg and system tools
+RUN apt-get update && apt-get install -y ffmpeg
+
+# Set working directory
 WORKDIR /app
 
-# Install ffmpeg and other dependencies
-RUN apt-get update && \
-    apt-get install -y ffmpeg && \
-    pip install --no-cache-dir fastapi uvicorn pydub openai requests python-multipart
-
+# Copy code and install Python dependencies
 COPY . .
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 8000
 
